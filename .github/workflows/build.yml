@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # 1. 解压
+    # 1. 解压代码
     - name: Unzip Project
       run: |
         unzip BandSpark.zip
@@ -25,7 +25,7 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # 3. 自动寻找真实的项目目录（解决路径错误）
+    # 3. 自动寻找项目目录
     - name: Find Project Path
       id: find_path
       run: |
@@ -34,24 +34,35 @@ jobs:
         elif [ -d "BandSpark" ] && [ -f "BandSpark/gradlew" ]; then
           echo "PROJECT_DIR=BandSpark" >> $GITHUB_ENV
         else
-          echo "未找到 gradlew，请检查压缩包结构！"
+          echo "未找到项目目录"
           exit 1
         fi
 
-    # 4. 生成 Gradle Wrapper 并赋予权限
+    # 4. 自动关闭混淆（核心修复！）
+    - name: Disable Minify
+      run: |
+        cd ${{ env.PROJECT_DIR }}
+        # 兼容 .gradle 和 .gradle.kts 两种格式
+        sed -i 's/minifyEnabled true/minifyEnabled false/g' app/build.gradle || true
+        sed -i 's/minifyEnabled true/minifyEnabled false/g' app/build.gradle.kts || true
+        sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' app/build.gradle || true
+        sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' app/build.gradle.kts || true
+        echo "混淆配置已临时关闭"
+
+    # 5. 生成 Gradle Wrapper 并赋予权限
     - name: Generate Gradle Wrapper
       run: |
         cd ${{ env.PROJECT_DIR }}
         gradle wrapper --gradle-version 8.4
         chmod +x gradlew
 
-    # 5. 编译 Debug APK
+    # 6. 编译 Debug APK
     - name: Build Debug APK
       run: |
         cd ${{ env.PROJECT_DIR }}
         ./gradlew assembleDebug
 
-    # 6. 上传 APK
+    # 7. 上传 APK
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
