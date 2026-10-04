@@ -38,18 +38,19 @@ jobs:
           exit 1
         fi
 
-    # 4. 自动关闭混淆（核心修复！）
-    - name: Disable Minify
+    # 4. 强行修复 build.gradle 里的 proguard 报错
+    - name: Fix Gradle Build File
       run: |
         cd ${{ env.PROJECT_DIR }}
-        # 兼容 .gradle 和 .gradle.kts 两种格式
+        # 修正名字不合法的 proguard 配置
+        sed -i "s/getDefaultProguardFile('[^']*')/getDefaultProguardFile('proguard-android-optimize.txt')/g" app/build.gradle || true
+        sed -i 's/getDefaultProguardFile("[^"]*")/getDefaultProguardFile("proguard-android-optimize.txt")/g' app/build.gradle.kts || true
+        # 强行关闭混淆，测试阶段不需要
         sed -i 's/minifyEnabled true/minifyEnabled false/g' app/build.gradle || true
-        sed -i 's/minifyEnabled true/minifyEnabled false/g' app/build.gradle.kts || true
-        sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' app/build.gradle || true
         sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' app/build.gradle.kts || true
-        echo "混淆配置已临时关闭"
+        echo "修复完成"
 
-    # 5. 生成 Gradle Wrapper 并赋予权限
+    # 5. 生成 Gradle Wrapper
     - name: Generate Gradle Wrapper
       run: |
         cd ${{ env.PROJECT_DIR }}
