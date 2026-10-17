@@ -1,39 +1,74 @@
-name: Build Android APK
+name: Build BandSpark Debug APK
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch: # 支持在 Actions 页面手动点击触发
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # 消除 Node.js 版本警告
+    branches: [ "main", "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+    - name: Show repo structure (debug)
+      run: |
+        echo "=== repo root ==="
+        ls -la
+        echo "=== find settings.gradle ==="
+        find . -name "settings.gradle" -o -name "settings.gradle.kts" | head -5
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
 
-      - name: Make Gradlew executable
-        run: chmod +x ./gradlew # 解决手机上传后 gradlew 丢失执行权限的问题[reference:0]
+    - name: Locate project root
+      run: |
+        # 自动找 settings.gradle，确定项目目录
+        PROJECT_DIR=$(dirname $(find . -name "settings.gradle" -o -name "settings.gradle.kts" | grep -v node_modules | head -1))
+        echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+        echo "项目目录 = $PROJECT_DIR"
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
+    - name: Fix build.gradle minify (avoid proguard error)
+      run: |
+        cd ${{ env.PROJECT_DIR }}
+        if [ -f "app/build.gradle" ]; then
+          sed -i "s|getDefaultProguardFile('[^']*')|getDefaultProguardFile('proguard-android-optimize.txt')|g" app/build.gradle || true
+          sed -i 's|minifyEnabled true|minifyEnabled false|g' app/build.gradle || true
+        fi
+        if [ -f "app/build.gradle.kts" ]; then
+          sed -i 's|isMinifyEnabled = true|isMinifyEnabled = false|g' app/build.gradle.kts || true
+        fi
+        echo "修复完成"
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+    - name: Generate Gradle Wrapper
+      run: |
+        cd ${{ env.PROJECT_DIR }}
+        # 安装 gradle 命令行（不用 wrapper）
+        curl -sL https://services.gradle.org/distributions/gradle-8.4-bin.zip -o /tmp/gradle.zip
+        unzip -q /tmp/gradle.zip -d /tmp
+        echo "/tmp/gradle-8.4/bin" >> "$GITHUB_PATH"
+        # 生成 wrapper jar
+        gradle wrapper --gradle-version 8.4 --distribution-type bin
+        chmod +x gradlew
+
+    - name: Build Debug APK
+      run: |
+        cd ${{ env.PROJECT_DIR }}
+        gradle assembleDebug --no-daemon --stacktrace
+
+    - name: Find and upload APK
+      run: |
+        echo "=== searching for APK ==="
+        find . -name "*.apk" -type f -exec ls -lh {} \;
+      uses: actions/upload-artifact@v4
+      with:
+        name: BandSpark-debug-apk
+        path: |
+          **/app-debug.apk
+          **/build/outputs/apk/**/*.apk
+        if-no-files-found: error
